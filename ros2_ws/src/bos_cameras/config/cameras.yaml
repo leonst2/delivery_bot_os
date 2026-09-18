@@ -1,0 +1,21 @@
+# Parameters for the two OV9281 CSI camera publisher nodes
+# (bos_cameras camera_publisher_node.py, launched by cameras.launch.py).
+#
+# Each top-level key is a ROS2 node name. Both camera0_publisher and
+# camera1_publisher are pointed at this same file; each one only picks out
+# its own section and ignores the other.
+camera0_publisher:
+  ros__parameters:
+    camera_num: 0
+    topic: "camera0/image_raw"
+    width: 1280
+    height: 800
+    frame_rate: 30.0
+
+camera1_publisher:
+  ros__parameters:
+    camera_num: 1
+    topic: "camera1/image_raw"
+    width: 1280
+    height: 800
+    frame_rate: 30.0

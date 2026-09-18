@@ -1,0 +1,131 @@
+# syntax=docker/dockerfile:1.7
+# ROS2 Jazzy execution backend for the CSI camera + Hailo8 nodes.
+#
+# Built on the same Debian trixie / Raspberry Pi apt repo as the host OS
+# (not Ubuntu) so that hailort/python3-hailort/picamera2 install as the
+# exact same build the host kernel driver and libcamera stack expect —
+# this is required for /dev/hailo0 and /dev/video* passthrough to work.
+#
+# ROS2 has no apt binaries for Raspberry Pi OS/Debian, so it's built from
+# source once here (builder stage) and only the resulting install tree is
+# kept in the final image.
+
+FROM debian:trixie-slim AS builder
+
+ARG ROS_DISTRO=jazzy
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git python3-pip python3-dev \
+    colcon python3-rosdep2 vcstool \
+    libssl-dev libtinyxml2-dev libyaml-dev libacl1-dev \
+    libpython3-dev python3-numpy \
+    ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Debian's python3-rosdep2 package ships /etc/ros/rosdep/sources.list.d/20-default.list
+# pre-seeded, so `rosdep init` (which expects to create it) fails as already-initialized.
+RUN rosdep init || true
+RUN rosdep update
+
+WORKDIR /opt/ros2_src
+RUN mkdir -p src && vcs import --input https://raw.githubusercontent.com/ros2/ros2/${ROS_DISTRO}/ros2.repos src
+
+# This is a headless backend (no display, no GUI, no simulation, no Rust,
+# no demo packages) — drop those trees so their dependency chains (much of
+# the Qt5/PySide2/sip GUI stack is unpackaged on Debian trixie) don't need
+# to be satisfied at all. Cuts both a real packaging gap and a lot of
+# unnecessary build time.
+RUN rm -rf src/ros2/rviz src/ros-visualization src/gazebo-release \
+    src/ros2-rust src/ros2/demos src/ros2/examples src/ros/ros_tutorials \
+    src/ros2/system_tests
+
+# The earlier apt-get install layer cleaned up /var/lib/apt/lists/* to keep
+# the layer small, but rosdep's own `apt-get install` calls need a package
+# index present, so refresh it first.
+RUN apt-get update && rosdep install --from-paths src --ignore-src -y --rosdistro ${ROS_DISTRO} \
+    --skip-keys "fastcdr rti-connext-dds-6.0.1 urdfdom_headers uncrustify rosidl_generator_rs lifecycle demo_nodes_py composition python3-vcstool" \
+    && rm -rf /var/lib/apt/lists/*
+
+# Debian splits colcon into many small extension packages instead of one
+# "common-extensions" bundle like Ubuntu's — without these, `colcon build`
+# doesn't even recognize --cmake-args/--parallel-workers as valid.
+# Installed as a separate late layer so it doesn't invalidate the (slow)
+# rosdep install cache above.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-colcon-cmake python3-colcon-ros python3-colcon-parallel-executor \
+    python3-colcon-package-information python3-colcon-package-selection \
+    python3-colcon-python-setup-py python3-colcon-defaults \
+    python3-colcon-output python3-colcon-notification python3-colcon-metadata \
+    python3-colcon-library-path python3-colcon-recursive-crawl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN colcon build --merge-install --install-base /opt/ros/${ROS_DISTRO} \
+    --cmake-args -DCMAKE_BUILD_TYPE=Release \
+    --parallel-workers 2
+
+
+FROM debian:trixie-slim
+
+ARG ROS_DISTRO=jazzy
+ENV ROS_DISTRO=${ROS_DISTRO} \
+    DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    ROS_DOMAIN_ID=0 \
+    RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+# Same Raspberry Pi apt repo as the host, so hailort/picamera2 versions
+# match the host's loaded kernel driver and libcamera build exactly.
+# Pin exact versions to whatever the host currently has installed
+# (checked via `dpkg-query -W` on the Pi) so container <-> host driver
+# compatibility is guaranteed rather than "whatever apt resolves today".
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# The keyring package itself must be bootstrapped by fetching its .deb
+# directly (there's no standalone .gpg file served at a fixed URL) —
+# the same pattern ROS's ros2-apt-source .deb uses. Version pinned to
+# what's on the host (`apt-cache policy raspberrypi-archive-keyring`).
+RUN curl -fsSL -o /tmp/raspi-keyring.deb \
+    "http://archive.raspberrypi.com/debian/pool/main/r/raspberrypi-archive-keyring/raspberrypi-archive-keyring_2025.1+rpt1_all.deb" \
+    && dpkg -i /tmp/raspi-keyring.deb \
+    && rm -f /tmp/raspi-keyring.deb
+
+RUN <<EOF
+cat > /etc/apt/sources.list.d/raspi.sources <<SOURCES
+Types: deb
+URIs: http://archive.raspberrypi.com/debian/
+Suites: trixie
+Components: main
+Signed-By: /usr/share/keyrings/raspberrypi-archive-keyring.gpg
+SOURCES
+EOF
+
+# cyclonedds/rmw_cyclonedds are already built from source above (they are
+# part of ros2.repos), so only the hardware-facing packages + runtime-only
+# Python deps (not carried over from the builder stage) + colcon (needed to
+# build the bos_cameras workspace at container start) are needed here.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    hailort=4.23.0 python3-hailort=4.23.0-1 \
+    python3-picamera2=0.3.37-1 python3-libcamera=0.7.2+rpt20260817-1 \
+    python3-numpy python3-opencv python3-yaml python3-setuptools python3-lark \
+    python3-flask \
+    libconsole-bridge1.0 liblttng-ctl0t64 libncursesw6 liborocos-kdl1.5 \
+    libpython3.13 libspdlog1.15 libtinyxml2-11 libyaml-cpp0.8 \
+    colcon python3-colcon-cmake python3-colcon-ros python3-colcon-parallel-executor \
+    python3-colcon-package-information python3-colcon-package-selection \
+    python3-colcon-python-setup-py python3-colcon-defaults \
+    python3-colcon-output python3-colcon-notification python3-colcon-metadata \
+    python3-colcon-library-path python3-colcon-recursive-crawl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/ros/${ROS_DISTRO} /opt/ros/${ROS_DISTRO}
+
+COPY docker/ros_entrypoint.sh /ros_entrypoint.sh
+RUN chmod +x /ros_entrypoint.sh
+
+WORKDIR /ros2_ws
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]

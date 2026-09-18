@@ -1,0 +1,19 @@
+# Parameters for the Hailo8 YOLOv8 inference node
+# (bos_cameras hailo_inference_node.py, launched by cameras.launch.py).
+#
+# hef_path here is the configured default; cameras.launch.py reads it to
+# seed the `hef_path` launch argument, which can still override it at
+# launch time (e.g. `ros2 launch bos_cameras cameras.launch.py
+# hef_path:=/ros2_ws/models/other.hef`, or docker-compose.ros.yml's
+# HEF_PATH env var) without editing this file.
+camera0_inference:
+  ros__parameters:
+    input_topic: "camera0/image_raw"
+    output_topic: "camera0/detections"
+    hef_path: "/ros2_ws/models/yolov8m.hef"
+    score_threshold: 0.5
+    log_file: "/ros2_ws/logs/detections.log"
+    # class_names is intentionally left unset here — it defaults to the 80
+    # COCO classes defined in hailo_accelerator.py. Only set it if you need
+    # to override the label list for a differently-trained model, e.g.:
+    # class_names: ["person", "bicycle", "car"]

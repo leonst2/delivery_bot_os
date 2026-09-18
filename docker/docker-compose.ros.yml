@@ -1,0 +1,32 @@
+services:
+  ros:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ros
+    image: delivery_bos_os/ros:latest
+    container_name: ros
+    # ros2 launch's graceful-shutdown path is built around SIGINT (the same
+    # signal a foreground Ctrl+C sends) — sending SIGTERM instead leaves it
+    # sitting past Docker's 10s stop timeout, so `docker stop`/`down` ends up
+    # hard-killing everything (no node cleanup, camera/Hailo left locked).
+    stop_signal: SIGINT
+    # libcamera/picamera2 enumerate a shifting set of /dev/video*, /dev/media*
+    # and v4l-subdev nodes (see `ls /dev/video*` on the host — three dozen of
+    # them) so pass the whole device namespace through rather than trying to
+    # pin exact device numbers.
+    privileged: true
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - HAILO_MONITOR=1
+    volumes:
+      - /run/udev:/run/udev:ro
+      - ../ros2_ws:/ros2_ws
+    working_dir: /ros2_ws
+    command: >
+      bash -c "colcon build --symlink-install &&
+               source install/setup.sh &&
+               exec ros2 launch bos_cameras cameras.launch.py hef_path:=${HEF_PATH:-/ros2_ws/models/yolov8m.hef}"

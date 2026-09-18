@@ -1,0 +1,12 @@
+# picamera2, rclpy, and hailo_platform are intentionally NOT listed here.
+# They come from apt (picamera2, hailo_platform via `hailo-all`) and the
+# source-built ROS2 install (rclpy), and must be reached via a venv created
+# with `python3 -m venv --system-site-packages .venv`. pip-installing them
+# here would shadow the system versions that are matched to this Pi's
+# libcamera/HailoRT/ROS2 builds.
+flask>=3.0
+opencv-python>=4.9
+ultralytics>=8.2
+numpy>=1.26
+platformio>=6.1
+psutil>=6.0

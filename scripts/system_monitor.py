@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Live console dashboard of this Pi's system vitals: CPU usage/frequency/
-temperature/throttling, RAM/swap, disk, network throughput, load/uptime,
-Hailo8 chip status, and the top host processes by CPU usage.
+temperature/throttling, PWM fan (RPM/duty/step), RAM/swap, disk, network
+throughput, load/uptime, Hailo8 chip status, and the top host processes by
+CPU usage.
 
 Runs on the host (not inside the ROS2 container) since it reads host
 firmware state via `vcgencmd` that isn't meaningful from inside a
@@ -12,6 +13,7 @@ Usage:
 """
 
 import argparse
+import glob
 import os
 import re
 import subprocess
@@ -87,6 +89,44 @@ def read_temp_and_throttle() -> dict:
         throttled_flags = [label for bit, label in _THROTTLE_BITS.items() if bits & (1 << bit)]
 
     return {"temp_c": temp_c, "throttled_flags": throttled_flags}
+
+
+def _read_sysfs(path: str) -> str | None:
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def read_fan() -> dict | None:
+    """The Pi 5 fan is a kernel pwm-fan: an hwmon device named "pwmfan"
+    (RPM + PWM duty) plus a thermal cooling device of type "pwm-fan" (the
+    step the thermal governor has picked). hwmonN numbers can change, so
+    look the device up by name. Returns None if there is no such fan."""
+    fan: dict | None = None
+    for hwmon in sorted(glob.glob("/sys/class/hwmon/hwmon*")):
+        if _read_sysfs(f"{hwmon}/name") == "pwmfan":
+            rpm = _read_sysfs(f"{hwmon}/fan1_input")
+            pwm = _read_sysfs(f"{hwmon}/pwm1")
+            fan = {
+                "rpm": int(rpm) if rpm else None,
+                "duty_pct": int(pwm) / 255 * 100 if pwm else None,
+                "step": None,
+                "max_step": None,
+            }
+            break
+    if fan is None:
+        return None
+
+    for cooling in sorted(glob.glob("/sys/class/thermal/cooling_device*")):
+        if _read_sysfs(f"{cooling}/type") == "pwm-fan":
+            step = _read_sysfs(f"{cooling}/cur_state")
+            max_step = _read_sysfs(f"{cooling}/max_state")
+            fan["step"] = int(step) if step else None
+            fan["max_step"] = int(max_step) if max_step else None
+            break
+    return fan
 
 
 def read_memory() -> dict:
@@ -203,7 +243,7 @@ def _fmt_duration(seconds: float) -> str:
     return f"{minutes}m"
 
 
-def render(cpu, temp, mem, disk, net_rates, load, hailo_static, hailo, procs, color: bool) -> list[str]:
+def render(cpu, temp, fan, mem, disk, net_rates, load, hailo_static, hailo, procs, color: bool) -> list[str]:
     lines = [_color("=== System Monitor ===", "1;36", color)]
 
     temp_c = temp["temp_c"]
@@ -220,6 +260,16 @@ def render(cpu, temp, mem, disk, net_rates, load, hailo_static, hailo, procs, co
 
     lines.append(f"CPU   {cpu['overall']:5.1f}%  ({freq_label})   temp {temp_label}   throttle {throttle_label}")
     lines.append(f"        per-core: {percpu_label}")
+
+    if fan is None:
+        lines.append("Fan   n/a (no pwm-fan found)")
+    else:
+        rpm = fan["rpm"]
+        state = _color("running", "1;32", color) if rpm else "off"
+        rpm_label = f"{rpm} RPM" if rpm is not None else "n/a RPM"
+        duty_label = f"{fan['duty_pct']:.0f}%" if fan["duty_pct"] is not None else "n/a"
+        step_label = f"{fan['step']}/{fan['max_step']}" if fan["step"] is not None else "n/a"
+        lines.append(f"Fan   {state}  {rpm_label}   duty {duty_label}   step {step_label}")
 
     ram, swap = mem["ram"], mem["swap"]
     lines.append(
@@ -280,6 +330,7 @@ def main() -> None:
         while True:
             cpu = read_cpu()
             temp = read_temp_and_throttle()
+            fan = read_fan()
             mem = read_memory()
             disk = read_disk()
             net_rates, net_prev = read_network(net_prev)
@@ -287,7 +338,7 @@ def main() -> None:
             hailo = read_hailo_dynamic()
             procs = read_top_processes(proc_cache, args.top)
 
-            lines = render(cpu, temp, mem, disk, net_rates, load, hailo_static, hailo, procs, args.color)
+            lines = render(cpu, temp, fan, mem, disk, net_rates, load, hailo_static, hailo, procs, args.color)
 
             out = []
             if prev_line_count:

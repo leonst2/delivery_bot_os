@@ -26,6 +26,10 @@ ros2_ws/src/bos_cameras/   the one ROS2 package (ament_python, pure Python, no C
   launch/cameras.launch.py     loads the YAML configs and wires all of the above together
 ros2_ws/models/       drop .hef files here (bind-mounted into the container as /ros2_ws/models/)
 ros2_ws/logs/         detections.log lands here (root-owned, written from inside the container)
+firmware/esp32_motor_controller/   PlatformIO project (Arduino framework, C++) for the ESP32 NodeMCU-32S
+                       motor controller; talks to the Pi over the USB serial link.
+                       Build/flash with the venv's pio: `.venv/bin/pio run [-t upload]`
+                       (toolchains live in ~/.platformio, outside the repo)
 scripts/               standalone host-side tools, NOT part of the ROS2 package
   record_dual_camera.py   dual-camera capture to .mp4 (no ROS2)
   gray_to_color.py        recorded video -> false-color colormap export(s)

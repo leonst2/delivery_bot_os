@@ -62,6 +62,8 @@ class WebViewerNode(Node):
 
     def _on_image(self, msg: Image) -> None:
         frame = image_msg_to_array(msg)
+        if msg.encoding == "rgb8":
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # imencode expects BGR
         ok, encoded = cv2.imencode(
             ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality]
         )

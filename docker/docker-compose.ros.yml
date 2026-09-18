@@ -24,6 +24,11 @@ services:
       - HAILO_MONITOR=1
     volumes:
       - /run/udev:/run/udev:ro
+      # Privileged containers get the /dev/videoN nodes but not the udev
+      # symlinks under /dev/v4l, which cameras.yaml uses to address the USB
+      # webcam stably. Devices hot-plugged after the container starts don't
+      # show up inside it, so plug the webcam in before `up`.
+      - /dev/v4l:/dev/v4l:ro
       - ../ros2_ws:/ros2_ws
     working_dir: /ros2_ws
     command: >

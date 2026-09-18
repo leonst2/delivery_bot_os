@@ -1,11 +1,14 @@
-# Parameters for the two OV9281 CSI camera publisher nodes
-# (bos_cameras camera_publisher_node.py, launched by cameras.launch.py).
+# Parameters for the camera publisher nodes (bos_cameras
+# camera_publisher_node.py, launched by cameras.launch.py): two OV9281 CSI
+# cameras (camera_type "picamera2") and one Logitech BRIO USB webcam
+# (camera_type "usb").
 #
-# Each top-level key is a ROS2 node name. Both camera0_publisher and
-# camera1_publisher are pointed at this same file; each one only picks out
-# its own section and ignores the other.
+# Each top-level key is a ROS2 node name. All camera*_publisher nodes are
+# pointed at this same file; each one only picks out its own section and
+# ignores the others.
 camera0_publisher:
   ros__parameters:
+    camera_type: "picamera2"
     camera_num: 0
     topic: "camera0/image_raw"
     width: 1280
@@ -14,8 +17,24 @@ camera0_publisher:
 
 camera1_publisher:
   ros__parameters:
+    camera_type: "picamera2"
     camera_num: 1
     topic: "camera1/image_raw"
     width: 1280
     height: 800
+    frame_rate: 30.0
+
+camera2_publisher:
+  ros__parameters:
+    camera_type: "usb"
+    # The BRIO exposes four V4L2 nodes: index0 = colour camera, index1 and
+    # index3 = metadata, index2 = IR camera. Use the by-id path (not
+    # /dev/videoN, whose number can change between boots); find yours with
+    # `ls /dev/v4l/by-id/`. It is only visible in the container because
+    # docker-compose.ros.yml bind-mounts /dev/v4l.
+    device: "/dev/v4l/by-id/usb-046d_Logitech_BRIO_64DE0178-video-index0"
+    fourcc: "MJPG"
+    topic: "camera2/image_raw"
+    width: 1280
+    height: 720
     frame_rate: 30.0

@@ -12,11 +12,18 @@ non-obvious facts below by exploration.
 docker/               Dockerfile.ros + docker-compose.ros.yml — see README "How it works"
 ros2_ws/src/bos_cameras/   the one ROS2 package (ament_python, pure Python, no C++)
   bos_cameras/
-    camera_publisher_node.py   picamera2 -> sensor_msgs/Image (mono8), one per camera
-    hailo_inference_node.py    image topic -> Hailo8 YOLOv8 inference -> detections + log file
+    camera_interface.py        CameraInterface (ABC): capture() -> (H,W) mono or (H,W,3) RGB, close()
+    picamera2_camera.py        CameraInterface for the CSI OV9281s (mono)
+    usb_camera.py              CameraInterface for a V4L2/UVC webcam via OpenCV (RGB)
+    camera_publisher_node.py   ROS adapter: camera_type param picks the CameraInterface -> sensor_msgs/Image
+    ai_accelerator_interface.py  AIAcceleratorInterface (ABC): __init__(model_path), process(image), close()
+    hailo_accelerator.py       AIAcceleratorInterface for Hailo8 YOLOv8 (COCO_CLASSES lives here)
+    hailo_inference_node.py    ROS adapter: image topic -> accelerator.process() -> detections + log file
     web_viewer_node.py         image topic -> MJPEG stream over Flask (LAN-reachable)
     image_utils.py             shared image_msg_to_array() helper
-  launch/cameras.launch.py     wires all of the above together
+  config/cameras.yaml          per-node params: camera0/1 (picamera2) + camera2 (usb)
+  config/hailo_accelerator.yaml  inference node params (hef_path etc.)
+  launch/cameras.launch.py     loads the YAML configs and wires all of the above together
 ros2_ws/models/       drop .hef files here (bind-mounted into the container as /ros2_ws/models/)
 ros2_ws/logs/         detections.log lands here (root-owned, written from inside the container)
 scripts/               standalone host-side tools, NOT part of the ROS2 package
@@ -96,7 +103,19 @@ README's Workflow section — don't duplicate it here, it drifts.
 - **`ros2 topic echo`/`hz` are broken in this image** (`No module named
   'psutil'` — `python3-psutil` isn't apt-installed in `Dockerfile.ros`). Use
   a throwaway rclpy subscriber script instead, or fix by adding the package.
-- **Both cameras are physically mounted upside down.** `record_dual_camera.py`
+- **The USB webcam (Logitech BRIO) is `camera2`, addressed by its
+  `/dev/v4l/by-id/...-video-index0` path.** The BRIO exposes four V4L2
+  nodes: index0 = colour, index2 = IR camera (GREY 340x340), index1/3 =
+  metadata — only index0 is the picture you want, and `/dev/videoN` numbers
+  can change between boots. The by-id symlinks only exist inside the
+  container because `docker-compose.ros.yml` bind-mounts `/dev/v4l`, and a
+  device plugged in *after* the container starts is invisible to it — plug
+  the webcam in first, then `up`. `usb_camera:=false` on the launch line
+  skips it. In low light the BRIO's auto-exposure drops its frame rate to
+  ~7.5Hz on its own (`exposure_dynamic_framerate`); that's the camera, not
+  the pipeline. It's currently on a USB 2.0 port (480M); a USB 3.0 port
+  allows the higher modes.
+- **Both CSI cameras are physically mounted upside down.** `record_dual_camera.py`
   output needs a 180° rotation to read right-side up — `gray_to_color.py`
   defaults `--rotation` to 180 for this reason.
 - **The OV9281 sensors have no color filter array** — there is no real color

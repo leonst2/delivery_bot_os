@@ -16,7 +16,8 @@ import numpy as np
 class CameraInterface(ABC):
     @abstractmethod
     def capture(self) -> np.ndarray:
-        """Capture and return the current frame."""
+        """Capture and return the current frame as a uint8 array: either
+        (H, W) for a mono camera or (H, W, 3) in RGB channel order."""
 
     @abstractmethod
     def close(self) -> None:

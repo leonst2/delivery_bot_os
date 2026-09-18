@@ -63,10 +63,18 @@ docker/
 ros2_ws/
   src/bos_cameras/         # the one ROS2 package
     bos_cameras/
-      camera_publisher_node.py   # one CSI camera -> sensor_msgs/Image
+      camera_interface.py        # CameraInterface: capture()/close()
+      picamera2_camera.py        # CSI camera implementation
+      usb_camera.py              # USB (V4L2/UVC) webcam implementation
+      camera_publisher_node.py   # camera -> sensor_msgs/Image (type chosen in cameras.yaml)
+      ai_accelerator_interface.py  # AIAcceleratorInterface: process(image)/close()
+      hailo_accelerator.py       # Hailo8 YOLOv8 implementation
       hailo_inference_node.py    # Hailo8 inference -> JSON detections (std_msgs/String)
       web_viewer_node.py         # image topic -> MJPEG stream over Flask
       image_utils.py             # shared sensor_msgs/Image <-> numpy helper
+    config/
+      cameras.yaml               # camera0/1 (CSI) + camera2 (USB webcam) params
+      hailo_accelerator.yaml     # inference node params
     launch/
       cameras.launch.py    # camera publishers + Hailo inference + web viewer
 requirements.txt            # pip deps for scripts/ only — see note below
@@ -114,8 +122,11 @@ only required after adding a new file, a new `console_scripts` entry in
 ### Start the full stack
 
 This is the one you want day-to-day — it runs `colcon build && ros2 launch
-bos_cameras cameras.launch.py`: both camera publishers, the Hailo inference
-node, and the `web_viewer` MJPEG stream.
+bos_cameras cameras.launch.py`: both CSI camera publishers, the USB webcam
+publisher (`camera2`), the Hailo inference node, and the `web_viewer` MJPEG
+stream. The webcam is optional — plug it in before `up`, or add
+`usb_camera:=false` to the `ros2 launch` line in `docker-compose.ros.yml` to
+start without it.
 
 ```bash
 docker compose -f docker/docker-compose.ros.yml up -d

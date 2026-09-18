@@ -4,6 +4,7 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -31,6 +32,12 @@ def generate_launch_description() -> LaunchDescription:
         default_value="8080",
         description="HTTP port for the web_viewer MJPEG stream",
     )
+    usb_camera_arg = DeclareLaunchArgument(
+        "usb_camera",
+        default_value="true",
+        description="Start the USB webcam publisher (camera2_publisher); set to "
+        "false to launch the rest of the stack without the webcam attached",
+    )
 
     camera0 = Node(
         package="bos_cameras",
@@ -45,6 +52,15 @@ def generate_launch_description() -> LaunchDescription:
         executable="camera_publisher",
         name="camera1_publisher",
         parameters=[cameras_yaml],
+        output="screen",
+        emulate_tty=True,
+    )
+    camera2 = Node(
+        package="bos_cameras",
+        executable="camera_publisher",
+        name="camera2_publisher",
+        parameters=[cameras_yaml],
+        condition=IfCondition(LaunchConfiguration("usb_camera")),
         output="screen",
         emulate_tty=True,
     )
@@ -74,5 +90,6 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     return LaunchDescription([
-        hef_path_arg, web_viewer_port_arg, camera0, camera1, inference0, web_viewer,
+        hef_path_arg, web_viewer_port_arg, usb_camera_arg,
+        camera0, camera1, camera2, inference0, web_viewer,
     ])

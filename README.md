@@ -3,6 +3,41 @@
 ROS2 setup for a Raspberry Pi 5 (8GB) with a Hailo8 AI accelerator and two
 CSI-connected OV9281 (mono, global-shutter) cameras.
 
+<p align="center">
+  <img src="docs/images/01_overview_front_left.png" width="49%" alt="Delivery bot, front-left view">
+  <img src="docs/images/02_overview_rear_right.png" width="49%" alt="Delivery bot, rear-right view">
+</p>
+
+## The robot
+
+delivery_bos_os is the onboard software for a small four-wheeled delivery
+robot: a lockable cargo compartment on a steerable chassis, with a sensor
+band of cameras across the front.
+
+<p align="center">
+  <img src="docs/images/09_doors_open_cargo_box.png" width="49%" alt="Lid doors open, cargo box visible">
+  <img src="docs/images/11_steering_front_view.png" width="49%" alt="Front view with the sensor band and steered wheels">
+</p>
+
+<p align="center">
+  <img src="docs/images/Steering_animation.gif" width="70%" alt="Steering linkage animation">
+</p>
+
+### Scope of this repository
+
+The robot's driving behaviour is trained in a **Unity simulation
+environment**. That simulation, its training setup and the trained policies
+are **not** part of this repository.
+
+This repository only covers the **ROS2-based robot core** — the software that
+runs on the real hardware and provides the core functionality everything else
+builds on:
+
+- camera capture (CSI + USB) and publishing as ROS2 image topics
+- on-device AI inference on the Hailo8 accelerator
+- a live MJPEG web view of the camera feed
+- the ESP32 motor controller firmware (`firmware/`) and its serial link to the Pi
+
 ## Hardware
 
 - Raspberry Pi 5, 8GB
